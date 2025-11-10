@@ -1,16 +1,12 @@
 // src/terminal.c
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
 #include "terminal.h"
 #include "parser.h"
 #include "exec.h"
 #include "builtins.h"
 #include "common.h"
+#include "history.h"
 
 #define WINDOW_WIDTH  800
 #define WINDOW_HEIGHT 600
@@ -142,6 +138,8 @@ static void cleanup(void) {
     if (window) SDL_DestroyWindow(window);
     TTF_Quit();
     SDL_Quit();
+    history_save();
+    history_cleanup();
 }
 
 // ---------- Execute and Capture Output ----------
@@ -233,6 +231,8 @@ int terminal_run(void) {
         return 1;
     }
 
+    history_init();
+
     add_line("Welcome to Custom Shell (SDL Terminal)");
     add_line("-------------------------------------");
 
@@ -261,8 +261,10 @@ int terminal_run(void) {
                     char with_prompt[MAX_INPUT_LEN + 8];
                     snprintf(with_prompt, sizeof(with_prompt), "%s%s", PROMPT, input_buffer);
                     add_line(with_prompt);
-                    if (strlen(input_buffer) > 0)
+                    if (strlen(input_buffer) > 0) {
+                        history_add(input_buffer);
                         run_command_and_capture(input_buffer);
+                    }
                     input_buffer[0] = '\0';
                     cursor_pos = 0;
                     scroll_offset = 0; // auto-scroll to bottom
@@ -273,6 +275,20 @@ int terminal_run(void) {
                                 input_buffer + cursor_pos,
                                 len - cursor_pos + 1);
                         cursor_pos--;
+                    }
+                } else if (k == SDLK_UP) {
+                    const char *h = history_prev();
+                    if (h) {
+                        strncpy(input_buffer, h, MAX_INPUT_LEN - 1);
+                        input_buffer[MAX_INPUT_LEN - 1] = '\0';
+                        cursor_pos = (int)strlen(input_buffer);
+                    }
+                } else if (k == SDLK_DOWN) {
+                    const char *h = history_next();
+                    if (h) {
+                    strncpy(input_buffer, h, MAX_INPUT_LEN - 1);
+                    input_buffer[MAX_INPUT_LEN - 1] = '\0';
+                    cursor_pos = (int)strlen(input_buffer);
                     }
                 } else if (k == SDLK_LEFT) {
                     if (cursor_pos > 0) cursor_pos--;
